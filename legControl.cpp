@@ -7,6 +7,13 @@
 #include "Arduino.h"
 #include "legControl.h"
 
+#define hip_sensorMax 2888.00
+#define hip_sensorMin 372.00
+#define thigh_sensorMax 3668.00
+#define thigh_sensorMin 136.00
+#define knee_sensorMax 3736.00
+#define knee_sensorMin 592.00
+
 legControl::legControl()
 {
 	//no setup here for now
@@ -30,8 +37,8 @@ int legControl::angleToSensor(int joint, float angle)
 	switch (joint) {
 		case 0:
 			//Serial.println("HIP");
-			sensorMax = 722.00;
-			sensorMin = 93.00;
+			sensorMax = hip_sensorMax;
+			sensorMin = hip_sensorMin;
 			cylinderMinLength = 16;
 			cylinderTravel = 8;
 			//  cylinderMaxLength = cylinderMinLength + cylinderTravel;
@@ -42,8 +49,8 @@ int legControl::angleToSensor(int joint, float angle)
 			break;
 	        case 1:
 			//Serial.println("THIGH");
-			sensorMax = 917.00;
-			sensorMin = 34.00;
+			sensorMax = thigh_sensorMax;
+			sensorMin = thigh_sensorMin;
 			cylinderMinLength = 24;
 			cylinderTravel = 14;
 			//  cylinderMaxLength = cylinderMinLength + cylinderTravel;
@@ -54,8 +61,8 @@ int legControl::angleToSensor(int joint, float angle)
 			break;
 		case 2:
 			//Serial.println("KNEE");
-			sensorMax = 934.00;
-			sensorMin = 148.00;
+			sensorMax = knee_sensorMax;
+			sensorMin = knee_sensorMin;
 			cylinderMinLength = 20;
 			cylinderTravel = 12;
 			//  cylinderMaxLength = cylinderMinLength + cylinderTravel;
@@ -90,7 +97,7 @@ int legControl::angleToSensor(int joint, float angle)
 	return sensorGoal;
 }
 
-float legControl::sensorToAngle(int joint, int sensorReading) 
+float legControl::sensorToAngle(int joint, float sensorReading) 
 {
 	static int cylinderMinLength; 
 	static int cylinderMaxLength;
@@ -108,8 +115,8 @@ float legControl::sensorToAngle(int joint, int sensorReading)
 	switch (joint) {
         case 0:
 		//Serial.println("HIP");
-		sensorMax = 722;
-		sensorMin = 93;
+		sensorMax = hip_sensorMax; // 722 in 10 bit -- 2888 in 12 bit
+		sensorMin = hip_sensorMin; // 93 in 10 bit -- 372 in 12 bit
 		cylinderMinLength = 16;
 		cylinderTravel = 8;
 		C1 = 6.83905;
@@ -119,8 +126,8 @@ float legControl::sensorToAngle(int joint, int sensorReading)
 		break;
         case 1:
 		//Serial.println("THIGH");
-		sensorMax = 917;
-		sensorMin = 34;
+		sensorMax = thigh_sensorMax; //917 in 10 bit -- 3668 in 12 bit
+		sensorMin = thigh_sensorMin; //34 in 10 bit -- 136 in 12 bit
 		cylinderMinLength = 24;
 		cylinderTravel = 14;
 		C1 = 10.21631;
@@ -130,8 +137,8 @@ float legControl::sensorToAngle(int joint, int sensorReading)
 		break;
         case 2:
 		//Serial.println("KNEE");
-		sensorMax = 934;
-		sensorMin = 148;
+		sensorMax = knee_sensorMax; //934 in 10bit -- 3736 in 12 bit
+		sensorMin = knee_sensorMin; //148 in 10bit -- 592 in 12 bit
 		cylinderMinLength = 20;
 		cylinderTravel = 12;
 		C1 = 25.6021;
@@ -143,7 +150,7 @@ float legControl::sensorToAngle(int joint, int sensorReading)
 	float sensorUnitsPerInch = (sensorMax - sensorMin) / (cylinderTravel);
 	//      Serial.print("sensor units per inch: ");
 	//      Serial.println(sensorUnitsPerInch);
-	int sensorReading_sensorMin = sensorReading - sensorMin;
+	float sensorReading_sensorMin = sensorReading - sensorMin;
 	//      Serial.print("sensorReading_sensorMin: ");
 	//      Serial.println(sensorReading_sensorMin);
 	currentCylinderLength = ((sensorReading - sensorMin) / sensorUnitsPerInch) + cylinderMinLength;
@@ -194,8 +201,8 @@ void legControl::anglesRadToXYZ(float anglesRad[], float xyz[]) {
 	const int L1 = 11; //leg link lengths hip, thigh, and knee
 	const int L2 = 54;
 	const int L3 = 72; //72 inches is from knee joint to ankle joint
-	Serial.println();
-	Serial.println("entered xyz calculation");
+	//Serial.println();
+	//Serial.println("entered xyz calculation");
 	
 	xyz[0] = cos(anglesRad[0]) * (L1 + L2*cos(anglesRad[1]) + L3*cos(anglesRad[1] + anglesRad[2] - pi));
 	xyz[1] = xyz[0] * tan(anglesRad[0]);
@@ -275,23 +282,35 @@ void legControl::xyzToAngles(float xyz[], float angles[]) {
 	angles[2] = theta3;
 }
 
-void legControl::xyzToSensors(float xyz[], int sensorGoals[]) {
+void legControl::xyzToSensors(float xyz[], float sensorGoals[]) {
 	float angles_tmp[3];
 	legControl::xyzToAngles(xyz, angles_tmp);
 	for (int i = 0; i < 3; i ++) {
 		sensorGoals[i] = legControl::angleToSensor(i, angles_tmp[i]);
+		//Serial.print(sensorGoals[i]);
+		//Serial.print('\t');
 	}
-	Serial.println();
+	//Serial.println();
+}
+
+void legControl::sensors_to_xyz(float sensors[], float xyz[]) {
+	float tmpAngles[3];
+	for (int i = 0; i < 3; i ++) {
+		tmpAngles[i] = legControl::sensorToAngle(i, sensors[i]);
+	}
+	legControl::anglesToXYZ(tmpAngles, xyz);
 }
 
 void legControl::goal_XYZ_toSensorVelocities(float startXYZ[], float finalXYZ[], float sensorVelocities[], float time_ms) {
-	int starting_sensors[3];
-	int ending_sensors[3];
+	float starting_sensors[3];
+	float ending_sensors[3];
 	legControl::xyzToSensors(startXYZ, starting_sensors);
 	legControl::xyzToSensors(finalXYZ, ending_sensors);
 	for (int i = 0; i < 3; i ++) {
 		sensorVelocities[i] = ((float)ending_sensors[i] - starting_sensors[i])/ time_ms;
 	} 
 }
+
+
 
 
